@@ -1,0 +1,471 @@
+<!--
+  OBJETIVO   : Dashboard web para monitoreo en tiempo real y control remoto
+               del sistema NaviChair. Muestra estado del sistema, últimas
+               lecturas de sensores, historial de alertas y permite activar
+               o desactivar el buzzer y el relevador desde el navegador.
+  INTEGRANTES: Diana Carolina Plascencia Rodríguez
+               María Aurora Rodríguez López
+               Escobedo Ojeda Luis David
+               Quintero Frausto Valeria Melissa Leilani
+  PROYECTO   : NaviChair — Sistema Inteligente de Asistencia y Monitoreo
+               para Silla de Ruedas Manual
+
+  INSTRUCCIONES:
+    1. Reemplaza los valores de firebaseConfig con los de TU proyecto Firebase.
+       Los encuentras en Firebase Console → Project Settings → Your apps → Web app.
+    2. Abre este archivo en cualquier navegador moderno.
+    3. No requiere servidor web, funciona directamente como archivo HTML.
+-->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NaviChair — Panel de Control</title>
+
+  <!-- SDK de Firebase (versión compatible, no requiere npm) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+  <style>
+    /* ============================================================
+       ESTILOS GENERALES
+    ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+
+    /* Encabezado */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid #1e293b;
+    }
+    header h1 { font-size: 1.5rem; font-weight: 600; color: #38bdf8; }
+    header p  { font-size: 0.85rem; color: #64748b; margin-top: 2px; }
+
+    /* Indicador de estado (Online/Offline) */
+    #indicador-estado {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    #punto-estado {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #ef4444;
+      transition: background 0.3s;
+    }
+    #punto-estado.en-linea { background: #22c55e; animation: pulsar 1.5s infinite; }
+    @keyframes pulsar {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.5; }
+    }
+
+    /* Cuadrícula principal */
+    .cuadricula {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Tarjeta genérica */
+    .tarjeta {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+    .tarjeta h2 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      margin-bottom: 1rem;
+    }
+
+    /* Filas de sensor */
+    .fila-sensor {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid #0f172a;
+    }
+    .fila-sensor:last-child { border-bottom: none; }
+    .etiqueta-sensor { font-size: 0.85rem; color: #94a3b8; }
+    .valor-sensor     { font-size: 1rem; font-weight: 600; color: #e2e8f0; }
+    .valor-sensor.peligro { color: #ef4444; }
+    .valor-sensor.advertencia { color: #f59e0b; }
+    .valor-sensor.normal      { color: #22c55e; }
+
+    /* Botones de control */
+    .grupo-botones {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .fila-control {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .etiqueta-control { font-size: 0.9rem; color: #e2e8f0; }
+    .sub-control      { font-size: 0.75rem; color: #64748b; }
+
+    .boton-toggle {
+      position: relative;
+      display: inline-block;
+      width: 52px; height: 28px;
+    }
+    .boton-toggle input { opacity: 0; width: 0; height: 0; }
+    .pista {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #334155;
+      border-radius: 28px;
+      transition: background 0.3s;
+    }
+    .pista::before {
+      content: "";
+      position: absolute;
+      width: 20px; height: 20px;
+      left: 4px; bottom: 4px;
+      background: #e2e8f0;
+      border-radius: 50%;
+      transition: transform 0.3s;
+    }
+    .boton-toggle input:checked + .pista { background: #38bdf8; }
+    .boton-toggle input:checked + .pista::before { transform: translateX(24px); }
+
+    /* Historial de alertas */
+    #lista-alertas { display: flex; flex-direction: column; gap: 0.5rem; }
+
+    .entrada-alerta {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 0.6rem 0.75rem;
+      border-radius: 8px;
+      background: #0f172a;
+      font-size: 0.82rem;
+    }
+    .icono-alerta { font-size: 1rem; min-width: 20px; }
+    .texto-alerta { flex: 1; }
+    .tipo-alerta  { font-weight: 600; color: #e2e8f0; }
+    .hora-alerta  { color: #64748b; font-size: 0.75rem; }
+    .entrada-alerta.obstaculo  { border-left: 3px solid #f59e0b; }
+    .entrada-alerta.inclinacion { border-left: 3px solid #ef4444; }
+    .entrada-alerta.inmovilidad { border-left: 3px solid #8b5cf6; }
+    .entrada-alerta.ia          { border-left: 3px solid #38bdf8; }
+
+    /* Hora de última actualización */
+    #ultima-actualizacion {
+      font-size: 0.75rem;
+      color: #475569;
+      text-align: right;
+      margin-top: 1rem;
+    }
+
+    /* Tarjeta de estado amplia */
+    .tarjeta-ancha { grid-column: 1 / -1; }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <div>
+      <h1>🦽 NaviChair</h1>
+      <p>Panel de monitoreo y control en tiempo real</p>
+    </div>
+    <div id="indicador-estado">
+      <div id="punto-estado"></div>
+      <span id="texto-estado">Sin conexión</span>
+    </div>
+  </header>
+
+  <!-- Cuadrícula principal -->
+  <div class="cuadricula">
+
+    <!-- Tarjeta: Distancias (sensores ultrasónicos) -->
+    <div class="tarjeta">
+      <h2>📡 Distancias (cm)</h2>
+      <div class="fila-sensor">
+        <span class="etiqueta-sensor">Izquierda</span>
+        <span class="valor-sensor" id="dist-izq">—</span>
+      </div>
+      <div class="fila-sensor">
+        <span class="etiqueta-sensor">Centro (frente)</span>
+        <span class="valor-sensor" id="dist-cen">—</span>
+      </div>
+      <div class="fila-sensor">
+        <span class="etiqueta-sensor">Derecha</span>
+        <span class="valor-sensor" id="dist-der">—</span>
+      </div>
+    </div>
+
+    <!-- Tarjeta: Estado del usuario -->
+    <div class="tarjeta">
+      <h2>👤 Estado del usuario</h2>
+      <div class="fila-sensor">
+        <span class="etiqueta-sensor">Inclinación</span>
+        <span class="valor-sensor" id="inclinacion">—</span>
+      </div>
+      <div class="fila-sensor">
+        <span class="etiqueta-sensor">Tiempo sin movimiento</span>
+        <span class="valor-sensor" id="inmovilidad">—</span>
+      </div>
+      <div class="fila-sensor">
+        <span class="etiqueta-sensor">Última detección IA</span>
+        <span class="valor-sensor" id="resultado-ia">—</span>
+      </div>
+    </div>
+
+    <!-- Tarjeta: Control remoto de actuadores -->
+    <div class="tarjeta">
+      <h2>🎛️ Control remoto</h2>
+      <div class="grupo-botones">
+
+        <div class="fila-control">
+          <div>
+            <div class="etiqueta-control">Buzzer</div>
+            <div class="sub-control">Activar / desactivar alerta sonora</div>
+          </div>
+          <label class="boton-toggle">
+            <input type="checkbox" id="interruptor-buzzer"
+                   onchange="enviarComando('buzzer', this.checked)" />
+            <span class="pista"></span>
+          </label>
+        </div>
+
+        <div class="fila-control">
+          <div>
+            <div class="etiqueta-control">Relevador</div>
+            <div class="sub-control">Activar / desactivar alerta física</div>
+          </div>
+          <label class="boton-toggle">
+            <input type="checkbox" id="interruptor-relevador"
+                   onchange="enviarComando('relevador', this.checked)" />
+            <span class="pista"></span>
+          </label>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Tarjeta: Historial de alertas (últimas 5) -->
+    <div class="tarjeta tarjeta-ancha">
+      <h2>🔔 Últimas 5 alertas</h2>
+      <div id="lista-alertas">
+        <div class="entrada-alerta">
+          <span class="icono-alerta">⏳</span>
+          <div class="texto-alerta">
+            <div class="tipo-alerta">Esperando datos...</div>
+            <div class="hora-alerta">Conectando con Firebase</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="ultima-actualizacion">Última actualización: —</div>
+
+  <!-- ================================================================
+       JAVASCRIPT — Lógica del dashboard
+  ================================================================ -->
+  <script>
+    // ----------------------------------------------------------------
+    // CONFIGURACIÓN DE FIREBASE
+    // IMPORTANTE: Reemplaza estos valores con los de TU proyecto.
+    // Los encuentras en Firebase Console → Project Settings → Web App
+    // ----------------------------------------------------------------
+    const configuracionFirebase = {
+      apiKey           : "TU_API_KEY_AQUI",
+      authDomain       : "TU_PROYECTO.firebaseapp.com",
+      databaseURL      : "https://TU_PROYECTO-default-rtdb.firebaseio.com",
+      projectId        : "TU_PROYECTO",
+      storageBucket    : "TU_PROYECTO.appspot.com",
+      messagingSenderId: "TU_SENDER_ID",
+      appId            : "TU_APP_ID"
+    };
+
+    // Inicializar Firebase
+    const aplicacion      = firebase.initializeApp(configuracionFirebase);
+    const baseDeDatos     = firebase.database();
+    const UMBRAL_OBSTACULO  = 50;   // cm
+    const UMBRAL_INCLINACION = 30;  // grados
+    const UMBRAL_INMOVILIDAD = 10;  // minutos
+
+    // ----------------------------------------------------------------
+    // FUNCIÓN: Actualizar el indicador de estado (Online/Offline)
+    // ----------------------------------------------------------------
+    function actualizarEstado(enLinea) {
+      const punto = document.getElementById("punto-estado");
+      const texto = document.getElementById("texto-estado");
+      if (enLinea) {
+        punto.classList.add("en-linea");
+        texto.textContent = "En línea";
+      } else {
+        punto.classList.remove("en-linea");
+        texto.textContent = "Sin conexión";
+      }
+    }
+
+    // Detectar conexión / desconexión usando Firebase .info/connected
+    baseDeDatos.ref(".info/connected").on("value", (instantanea) => {
+      actualizarEstado(instantanea.val() === true);
+    });
+
+    // ----------------------------------------------------------------
+    // FUNCIÓN: Colorear un valor según si está en zona peligrosa
+    // ----------------------------------------------------------------
+    function aplicarColorDistancia(elemento, valor) {
+      elemento.classList.remove("peligro", "advertencia", "normal");
+      if (valor < UMBRAL_OBSTACULO)
+        elemento.classList.add("peligro");
+      else if (valor < UMBRAL_OBSTACULO * 1.5)
+        elemento.classList.add("advertencia");
+      else
+        elemento.classList.add("normal");
+    }
+
+    // ----------------------------------------------------------------
+    // ESCUCHAR: Estado actual (sensores en tiempo real)
+    // ----------------------------------------------------------------
+    baseDeDatos.ref("estado_actual").on("value", (instantanea) => {
+      const datos = instantanea.val();
+      if (!datos) return;
+
+      // Distancias
+      const izq = parseFloat(datos.izq || 0);
+      const cen = parseFloat(datos.cen || 0);
+      const der = parseFloat(datos.der || 0);
+
+      const elIzq = document.getElementById("dist-izq");
+      const elCen = document.getElementById("dist-cen");
+      const elDer = document.getElementById("dist-der");
+
+      elIzq.textContent = izq.toFixed(0) + " cm";
+      elCen.textContent = cen.toFixed(0) + " cm";
+      elDer.textContent = der.toFixed(0) + " cm";
+
+      aplicarColorDistancia(elIzq, izq);
+      aplicarColorDistancia(elCen, cen);
+      aplicarColorDistancia(elDer, der);
+
+      // Inclinación
+      const incl = parseFloat(datos.incl || 0);
+      const elIncl = document.getElementById("inclinacion");
+      elIncl.textContent = incl.toFixed(1) + "°";
+      elIncl.classList.remove("peligro", "normal");
+      elIncl.classList.add(incl > UMBRAL_INCLINACION ? "peligro" : "normal");
+
+      // Inmovilidad
+      const inmov = parseFloat(datos.inmov || 0);
+      const elInmov = document.getElementById("inmovilidad");
+      elInmov.textContent = inmov.toFixed(1) + " min";
+      elInmov.classList.remove("peligro", "advertencia", "normal");
+      if      (inmov > UMBRAL_INMOVILIDAD)       elInmov.classList.add("peligro");
+      else if (inmov > UMBRAL_INMOVILIDAD * 0.7) elInmov.classList.add("advertencia");
+      else                                        elInmov.classList.add("normal");
+
+      // Hora de última actualización
+      const ahora = new Date();
+      document.getElementById("ultima-actualizacion").textContent =
+        "Última actualización: " + ahora.toLocaleTimeString("es-MX");
+    });
+
+    // ----------------------------------------------------------------
+    // ESCUCHAR: Última alerta (para el resultado de IA)
+    // ----------------------------------------------------------------
+    baseDeDatos.ref("resultados_ia").limitToLast(1).on("value", (instantanea) => {
+      instantanea.forEach((hijo) => {
+        const datos = hijo.val();
+        const elIA = document.getElementById("resultado-ia");
+        if (datos.alerta) {
+          elIA.textContent = datos.detecciones + " objeto(s) detectado(s)";
+          elIA.className = "valor-sensor peligro";
+        } else {
+          elIA.textContent = "Sin obstáculos";
+          elIA.className = "valor-sensor normal";
+        }
+      });
+    });
+
+    // ----------------------------------------------------------------
+    // ESCUCHAR: Historial de alertas (últimas 5)
+    // ----------------------------------------------------------------
+    const iconosAlerta = {
+      obstaculo  : "⚠️",
+      inclinacion: "📐",
+      inmovilidad: "😴",
+      ia         : "👁️"
+    };
+
+    baseDeDatos.ref("alertas").limitToLast(5).on("value", (instantanea) => {
+      const listaAlertas = [];
+      instantanea.forEach((hijo) => {
+        listaAlertas.push(hijo.val());
+      });
+
+      if (listaAlertas.length === 0) return;
+
+      // Mostrar en orden inverso (la más reciente primero)
+      listaAlertas.reverse();
+
+      const contenedor = document.getElementById("lista-alertas");
+      contenedor.innerHTML = "";
+
+      listaAlertas.forEach((alerta) => {
+        const div        = document.createElement("div");
+        const subtipo    = alerta.subtipo || "alerta";
+        const icono      = iconosAlerta[subtipo] || "🔔";
+        const hora       = alerta.timestamp
+          ? new Date(alerta.timestamp).toLocaleTimeString("es-MX")
+          : "Hora desconocida";
+
+        div.className    = "entrada-alerta " + subtipo;
+        div.innerHTML    =
+          '<span class="icono-alerta">' + icono + '</span>' +
+          '<div class="texto-alerta">' +
+            '<div class="tipo-alerta">' + (alerta.descripcion || "Alerta") + '</div>' +
+            '<div class="hora-alerta">' + hora + '</div>' +
+          '</div>';
+
+        contenedor.appendChild(div);
+      });
+    });
+
+    // ----------------------------------------------------------------
+    // FUNCIÓN: Enviar comando a Firebase (toggle del dashboard)
+    // El firebase_logger.py escucha este nodo y lo reenvía por MQTT
+    // ----------------------------------------------------------------
+    function enviarComando(dispositivo, estadoActivo) {
+      const valor = estadoActivo ? "ON" : "OFF";
+      baseDeDatos.ref("comandos/" + dispositivo).set(valor)
+        .then(() => {
+          console.log("Comando enviado → " + dispositivo + ": " + valor);
+        })
+        .catch((error) => {
+          console.error("Error al enviar comando:", error);
+        });
+    }
+  </script>
+
+</body>
+</html>
