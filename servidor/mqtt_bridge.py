@@ -32,7 +32,7 @@ import datetime
 # Cambia DIRECCION_BROKER por la IP de tu computadora en la red local.
 # Para encontrarla: en Windows ejecuta "ipconfig", en Linux/Mac "ifconfig"
 # -----------------------------------------------------------------------
-DIRECCION_BROKER = "localhost"   # o la IP de tu PC, ej: "192.168.1.100"
+DIRECCION_BROKER = "172.20.10.3"  # o la IP de tu PC, ej: "192.168.1.100"
 PUERTO_BROKER    = 1883
 ID_CLIENTE       = "navichair_servidor_python"
 
@@ -191,3 +191,4 @@ if __name__ == "__main__":
         print("{} ERROR: No se pudo conectar al broker en {}:{}".format(
             marca_de_tiempo(), DIRECCION_BROKER, PUERTO_BROKER))
         print("  Verifica que Mosquitto esté corriendo: mosquitto -v")
+
