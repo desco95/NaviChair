@@ -40,6 +40,20 @@ import sys
 import os
 
 # -----------------------------------------------------------------------
+# COMPATIBILIDAD PAHO-MQTT 1.x y 2.x
+# paho-mqtt >= 2.0 requiere especificar CallbackAPIVersion en el constructor.
+# Se usa importlib.metadata para leer la versión instalada de forma segura,
+# ya que paho.mqtt.client no expone __version__ en todas las versiones.
+# -----------------------------------------------------------------------
+try:
+    from importlib.metadata import version as _pkg_version
+    _PAHO_VERSION = tuple(int(x) for x in _pkg_version("paho-mqtt").split(".")[:2])
+except Exception:
+    # Fallback: si no se puede leer la versión, asumir 1.x (comportamiento seguro)
+    _PAHO_VERSION = (1, 0)
+_PAHO_V2 = _PAHO_VERSION >= (2, 0)
+
+# -----------------------------------------------------------------------
 # CONFIGURACIÓN
 # -----------------------------------------------------------------------
 DIRECCION_BROKER    = "localhost"
@@ -122,7 +136,9 @@ def procesar_imagen(imagen_bytes, clasificador):
         minSize=(30, 60)
     )
 
-    cantidad = len(detecciones) if hasattr(detecciones, '__len__') else 0
+    # CORRECCIÓN: detectMultiScale puede retornar tupla vacía () en lugar
+    # de lista cuando no hay detecciones. Se normaliza con len() de forma segura.
+    cantidad = len(detecciones) if len(detecciones) > 0 else 0
 
     # Dibujar rectángulos sobre las detecciones
     for (x, y, ancho, alto) in detecciones:
@@ -188,19 +204,78 @@ def prueba_con_imagen_estatica(clasificador):
     print("{} === PRUEBA COMPLETADA ===\n".format(marca_de_tiempo()))
 
 
+def modo_webcam(clasificador):
+    """
+    Parámetros : clasificador — modelo Haar Cascade cargado
+    Descripción: Activa la cámara local (índice 0) y aplica detección
+                 en tiempo real cuadro a cuadro. Muestra ventana con las
+                 detecciones anotadas. Presionar 'q' para salir.
+    Retorna    : None
+    """
+    print("\n{} === MODO WEBCAM LOCAL ===".format(marca_de_tiempo()))
+
+    cap = cv2.VideoCapture(0)
+
+    # CORRECCIÓN: verificar que la cámara se abrió correctamente
+    if not cap.isOpened():
+        print("{} ERROR: No se pudo abrir la cámara (índice 0).".format(
+            marca_de_tiempo()))
+        print("  Verifica que la cámara esté conectada y no esté en uso.")
+        return
+
+    print("  Cámara abierta. Presiona 'q' para salir.")
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            print("{} ADVERTENCIA: No se pudo leer fotograma. Deteniendo.".format(
+                marca_de_tiempo()))
+            break
+
+        gris = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        detecciones = clasificador.detectMultiScale(
+            gris,
+            1.1, 3, minSize=(30, 60)
+        )
+
+        for (x, y, w, h) in detecciones:
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+
+        cantidad = len(detecciones)
+
+        if cantidad >= UMBRAL_DETECCIONES:
+            print("{} ALERTA: Persona detectada → MQTT ON".format(marca_de_tiempo()))
+
+        cv2.imshow("IA NaviChair", frame)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+
 # -----------------------------------------------------------------------
 # CALLBACKS MQTT
 # -----------------------------------------------------------------------
 
-def al_conectar(cliente, datos_usuario, indicadores, codigo_resultado):
+def al_conectar(cliente, datos_usuario, indicadores, codigo_resultado, propiedades=None):
     """
     Parámetros : cliente, datos_usuario, indicadores — estándar MQTT
                  codigo_resultado — 0 si conexión exitosa
+                 propiedades      — parámetro adicional requerido en paho-mqtt 2.x
     Descripción: Callback de conexión. Se suscribe al tópico de imágenes
                  de la cámara cuando la conexión se establece con éxito.
+                 La firma acepta el parámetro 'propiedades' para compatibilidad
+                 con paho-mqtt >= 2.0 sin romper la versión 1.x.
     Retorna    : None
     """
-    if codigo_resultado == 0:
+    # En paho-mqtt 2.x, codigo_resultado es un objeto ReasonCode, no un int.
+    # Se convierte a int para la comparación de forma segura.
+    codigo = int(codigo_resultado) if hasattr(codigo_resultado, 'value') else codigo_resultado
+
+    if codigo == 0:
         print("{} IA conectada al broker MQTT.".format(marca_de_tiempo()))
         cliente.subscribe(TOPICO_CAMARA)
         print("  → Escuchando imágenes en: {}".format(TOPICO_CAMARA))
@@ -272,8 +347,21 @@ if __name__ == "__main__":
         prueba_con_imagen_estatica(clasificador)
         sys.exit(0)
 
+    if "--webcam" in sys.argv:
+        modo_webcam(clasificador)
+        sys.exit(0)
+
     # Modo normal: conectar a MQTT y procesar en tiempo real
-    cliente_ia = mqtt.Client(client_id=ID_CLIENTE_IA)
+    # CORRECCIÓN: compatibilidad con paho-mqtt 1.x y 2.x
+    # paho-mqtt >= 2.0 requiere CallbackAPIVersion en el constructor.
+    if _PAHO_V2:
+        cliente_ia = mqtt.Client(
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION1,
+            client_id=ID_CLIENTE_IA
+        )
+    else:
+        cliente_ia = mqtt.Client(client_id=ID_CLIENTE_IA)
+
     cliente_ia.on_connect = al_conectar
     cliente_ia.on_message = construir_callback_mensaje(clasificador)
 
