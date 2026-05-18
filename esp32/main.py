@@ -34,7 +34,7 @@ from umqtt.simple import MQTTClient
 # CONFIGURACIÓN MQTT
 # Cambia estos valores según tu broker y red WiFi
 # -----------------------------------------------------------------------
-BROKER_MQTT        = "192.168.1.100"   # IP de tu broker (ej. Mosquitto local)
+BROKER_MQTT        = "172.20.10.3"   # IP de tu broker (ej. Mosquitto local)
 PUERTO_MQTT        = 1883
 ID_CLIENTE_MQTT    = "navichair_esp32"
 TOPICO_OBSTACULOS  = "navichair/obstaculos"
@@ -45,8 +45,8 @@ TOPICO_ESTADO      = "navichair/estado"
 # -----------------------------------------------------------------------
 # CONFIGURACIÓN DE RED WiFi
 # -----------------------------------------------------------------------
-SSID_WIFI     = "TuRedWiFi"
-CLAVE_WIFI    = "TuContrasena"
+SSID_WIFI = "Iphone David"
+CLAVE_WIFI = "huevitos"
 
 
 def conectar_wifi():
