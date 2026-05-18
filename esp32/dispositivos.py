@@ -54,10 +54,9 @@ class CajaDeGestion:
 
         # Centro (frente)
         self.trig_cen  = Pin(19, Pin.OUT)
-        self.echo_cen  = Pin(21, Pin.IN)
+        self.echo_cen  = Pin(34, Pin.IN)
 
-        # Derecha
-        self.trig_der  = Pin(22, Pin.OUT)
+        self.trig_der  = Pin(4, Pin.OUT)
         self.echo_der  = Pin(23, Pin.IN)
 
         # -----------------------------------------------
@@ -455,3 +454,4 @@ class CajaDeControl:
         self.pantalla.fill(0)
         self.pantalla.text("ESTADO SEGURO", 4, 24)
         self.pantalla.show()
+
