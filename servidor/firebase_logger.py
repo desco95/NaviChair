@@ -43,16 +43,16 @@ import time
 # -----------------------------------------------------------------------
 
 # Ruta al archivo JSON de credenciales descargado desde Firebase Console
-RUTA_CREDENCIAL    = "credencial_firebase.json"
+RUTA_CREDENCIAL = r"C:\Users\GUICH\Desktop\TAPIA PROYECTO\credenciales.json"
 
 # URL de tu Realtime Database (la encontrarás en Firebase Console → Realtime DB)
 # Formato: https://TU-PROYECTO-DEFAULT-RTDB.firebaseio.com/
-URL_BASE_DE_DATOS  = "https://navichair-XXXX-default-rtdb.firebaseio.com/"
+URL_BASE_DE_DATOS  = "https://navichair-default-rtdb.firebaseio.com/"
 
 # -----------------------------------------------------------------------
 # CONFIGURACIÓN DE MQTT
 # -----------------------------------------------------------------------
-DIRECCION_BROKER   = "localhost"
+DIRECCION_BROKER   = "172.20.10.3"
 PUERTO_BROKER      = 1883
 ID_CLIENTE_FB      = "navichair_firebase_logger"
 
@@ -317,7 +317,6 @@ def construir_callbacks(referencia_db):
 # -----------------------------------------------------------------------
 
 if __name__ == "__main__":
-    global _cliente_mqtt_global
 
     # Inicializar Firebase
     referencia_db = inicializar_firebase()
@@ -347,3 +346,4 @@ if __name__ == "__main__":
         cliente_fb.disconnect()
     except ConnectionRefusedError:
         print("{} ERROR: Broker no disponible.".format(marca_de_tiempo()))
+
