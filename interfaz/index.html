@@ -775,11 +775,13 @@ let historialData = [];
 // ----------------------------------------------------------------
 // 1. CÁMARA EN VIVO
 // ----------------------------------------------------------------
-bd.ref('camara_actual/frame').on('value', snap => {
+bd.ref('camara_actual').on('value', snap => {
   if (!snap.exists()) return;
+  const d = snap.val();
+  if (!d || !d.frame) return;
   const img = document.getElementById('imagen-cam');
   const sin = document.getElementById('cam-sin-senal');
-  img.src = 'data:image/jpeg;base64,' + snap.val();
+  img.src = 'data:image/jpeg;base64,' + d.frame;
   img.style.display = 'block';
   sin.style.display = 'none';
 });
