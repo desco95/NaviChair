@@ -772,22 +772,25 @@ let contAlertas   = { obstaculo: 0, inclinacion: 0, inmovilidad: 0, ia: 0 };
 let ultimaAlerta  = null;
 let historialData = [];
 
-// 1. CÁMARA EN VIVO — polling cada 600ms
+// 1. CÁMARA EN VIVO — listener reactivo en tiempo real
 // ----------------------------------------------------------------
-function actualizarCamara() {
-  bd.ref('camara_actual').once('value').then(snap => {
-    if (!snap.exists()) return;
-    const d = snap.val();
-    if (!d || !d.frame) return;
-    const img = document.getElementById('imagen-cam');
-    const sin = document.getElementById('cam-sin-senal');
-    img.src = 'data:image/jpeg;base64,' + d.frame;
-    img.style.display = 'block';
-    sin.style.display = 'none';
-  });
-}
-setInterval(actualizarCamara, 600);
-actualizarCamara();
+let ultimoTs = null;
+
+bd.ref('camara_actual').on('value', snap => {
+  if (!snap.exists()) return;
+  const d = snap.val();
+  if (!d || !d.frame) return;
+
+  if (d.ts === ultimoTs) return;
+  ultimoTs = d.ts;
+
+  const img = document.getElementById('imagen-cam');
+  const sin = document.getElementById('cam-sin-senal');
+  img.src = '';
+  img.src = 'data:image/jpeg;base64,' + d.frame;
+  img.style.display = 'block';
+  sin.style.display = 'none';
+});
 
 // ----------------------------------------------------------------
 // 2. RESULTADO IA — actualizar badge de la cámara
