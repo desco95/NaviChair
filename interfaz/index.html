@@ -1,471 +1,1027 @@
-<!--
-  OBJETIVO   : Dashboard web para monitoreo en tiempo real y control remoto
-               del sistema NaviChair. Muestra estado del sistema, últimas
-               lecturas de sensores, historial de alertas y permite activar
-               o desactivar el buzzer y el relevador desde el navegador.
-  INTEGRANTES: Diana Carolina Plascencia Rodríguez
-               María Aurora Rodríguez López
-               Escobedo Ojeda Luis David
-               Quintero Frausto Valeria Melissa Leilani
-  PROYECTO   : NaviChair — Sistema Inteligente de Asistencia y Monitoreo
-               para Silla de Ruedas Manual
-
-  INSTRUCCIONES:
-    1. Reemplaza los valores de firebaseConfig con los de TU proyecto Firebase.
-       Los encuentras en Firebase Console → Project Settings → Your apps → Web app.
-    2. Abre este archivo en cualquier navegador moderno.
-    3. No requiere servidor web, funciona directamente como archivo HTML.
--->
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NaviChair — Panel de Control</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NaviChair — Panel del Cuidador</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 
-  <!-- SDK de Firebase (versión compatible, no requiere npm) -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <!-- Firebase SDK v8 -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
   <style>
-    /* ============================================================
-       ESTILOS GENERALES
-    ============================================================ */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
-      min-height: 100vh;
-      padding: 1.5rem;
+    :root {
+      --bg:       #050a0f;
+      --surface:  #0d1821;
+      --border:   #1a2e40;
+      --accent:   #00d4ff;
+      --danger:   #ff3b5c;
+      --warn:     #ffaa00;
+      --ok:       #00e5a0;
+      --text:     #c8dde8;
+      --muted:    #4a6475;
+      --mono:     'Space Mono', monospace;
+      --sans:     'DM Sans', sans-serif;
     }
 
-    /* Encabezado */
-    header {
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 15px;
+      min-height: 100vh;
+    }
+
+    /* ── SCANLINE overlay ─────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,212,255,.015) 2px,
+        rgba(0,212,255,.015) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* ── TOPBAR ───────────────────────────────────── */
+    .topbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 2rem;
-      padding-bottom: 1rem;
-      border-bottom: 1px solid #1e293b;
+      padding: 16px 28px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
-    header h1 { font-size: 1.5rem; font-weight: 600; color: #38bdf8; }
-    header p  { font-size: 0.85rem; color: #64748b; margin-top: 2px; }
 
-    /* Indicador de estado (Online/Offline) */
-    #indicador-estado {
+    .logo {
+      font-family: var(--mono);
+      font-size: 1.1rem;
+      color: var(--accent);
+      letter-spacing: 2px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      color: #000;
+      font-size: 1rem;
+    }
+
+    .status-pill {
       display: flex;
       align-items: center;
       gap: 8px;
-      font-size: 0.85rem;
-      font-weight: 500;
+      font-family: var(--mono);
+      font-size: .75rem;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 6px 14px;
+      border-radius: 20px;
     }
-    #punto-estado {
-      width: 10px; height: 10px;
+    .dot {
+      width: 8px; height: 8px;
       border-radius: 50%;
-      background: #ef4444;
-      transition: background 0.3s;
+      background: var(--muted);
     }
-    #punto-estado.en-linea { background: #22c55e; animation: pulsar 1.5s infinite; }
-    @keyframes pulsar {
-      0%, 100% { opacity: 1; }
-      50%       { opacity: 0.5; }
-    }
+    .dot.online  { background: var(--ok);     box-shadow: 0 0 8px var(--ok); animation: pulso 1.5s infinite; }
+    .dot.offline { background: var(--danger);  }
 
-    /* Cuadrícula principal */
-    .cuadricula {
+    /* ── LAYOUT ───────────────────────────────────── */
+    .contenedor { padding: 24px 28px; max-width: 1400px; margin: 0 auto; }
+
+    .grid-principal {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 1.25rem;
-      margin-bottom: 1.5rem;
+      grid-template-columns: 1fr 340px;
+      gap: 20px;
+      margin-bottom: 20px;
     }
 
-    /* Tarjeta genérica */
-    .tarjeta {
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 1.25rem;
-    }
-    .tarjeta h2 {
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #64748b;
-      margin-bottom: 1rem;
-    }
+    .columna-izq { display: flex; flex-direction: column; gap: 20px; }
 
-    /* Filas de sensor */
-    .fila-sensor {
+    /* ── CÁMARA ───────────────────────────────────── */
+    .cam-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      position: relative;
+      aspect-ratio: 4/3;
+    }
+    .cam-wrap img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+      background: #020609;
+    }
+    .cam-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    /* corner brackets */
+    .cam-overlay::before, .cam-overlay::after,
+    .cam-wrap::before, .cam-wrap::after {
+      content: '';
+      position: absolute;
+      width: 22px; height: 22px;
+      border-color: var(--accent);
+      border-style: solid;
+      z-index: 2;
+    }
+    .cam-wrap::before  { top:8px; left:8px;  border-width: 2px 0 0 2px; }
+    .cam-wrap::after   { top:8px; right:8px; border-width: 2px 2px 0 0; }
+    .cam-overlay::before { bottom:8px; left:8px;  border-width: 0 0 2px 2px; }
+    .cam-overlay::after  { bottom:8px; right:8px; border-width: 0 2px 2px 0; }
+
+    .cam-badge {
+      position: absolute;
+      top: 14px; left: 14px;
+      background: var(--danger);
+      color: #fff;
+      font-family: var(--mono);
+      font-size: .65rem;
+      letter-spacing: 2px;
+      padding: 4px 10px;
+      border-radius: 4px;
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      padding: 0.5rem 0;
-      border-bottom: 1px solid #0f172a;
+      gap: 6px;
+      z-index: 3;
     }
-    .fila-sensor:last-child { border-bottom: none; }
-    .etiqueta-sensor { font-size: 0.85rem; color: #94a3b8; }
-    .valor-sensor     { font-size: 1rem; font-weight: 600; color: #e2e8f0; }
-    .valor-sensor.peligro { color: #ef4444; }
-    .valor-sensor.advertencia { color: #f59e0b; }
-    .valor-sensor.normal      { color: #22c55e; }
+    .cam-badge .rec-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #fff;
+      animation: pulso 1s infinite;
+    }
 
-    /* Botones de control */
-    .grupo-botones {
+    .cam-ia-badge {
+      position: absolute;
+      top: 14px; right: 14px;
+      background: rgba(0,212,255,.12);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: .65rem;
+      letter-spacing: 1px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      z-index: 3;
+      transition: all .3s;
+    }
+    .cam-ia-badge.alerta {
+      background: rgba(255,59,92,.2);
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    .cam-sin-senal {
+      position: absolute;
+      inset: 0;
       display: flex;
       flex-direction: column;
-      gap: 0.75rem;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: .8rem;
+      letter-spacing: 1px;
+      z-index: 1;
     }
-    .fila-control {
+    .cam-sin-senal .icono { font-size: 2.5rem; opacity: .3; }
+
+    /* ── MÉTRICAS FILA ───────────────────────────── */
+    .metricas-fila {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    .metrica {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color .3s;
+    }
+    .metrica::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--accent);
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform .4s;
+    }
+    .metrica.alerta { border-color: var(--danger); }
+    .metrica.alerta::after { background: var(--danger); transform: scaleX(1); }
+
+    .metrica-label {
+      font-family: var(--mono);
+      font-size: .65rem;
+      color: var(--muted);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .metrica-val {
+      font-family: var(--mono);
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1;
+      transition: color .3s;
+    }
+    .metrica.alerta .metrica-val { color: var(--danger); }
+    .metrica-unit {
+      font-size: .75rem;
+      color: var(--muted);
+      margin-top: 4px;
+      font-family: var(--mono);
+    }
+
+    /* ── COLUMNA DERECHA ─────────────────────────── */
+    .columna-der { display: flex; flex-direction: column; gap: 20px; }
+
+    /* ── TARJETA GENÉRICA ────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
       display: flex;
+      align-items: center;
       justify-content: space-between;
+    }
+    .card-title {
+      font-family: var(--mono);
+      font-size: .72rem;
+      color: var(--accent);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    .card-body { padding: 16px; }
+
+    /* ── CONTROL REMOTO ──────────────────────────── */
+    .btn-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .btn-ctrl {
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: .72rem;
+      letter-spacing: 1px;
+      padding: 13px 8px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all .2s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-ctrl .btn-ico { font-size: 1.3rem; }
+    .btn-ctrl:hover { background: rgba(0,212,255,.08); border-color: var(--accent); color: var(--accent); }
+    .btn-ctrl.danger:hover { background: rgba(255,59,92,.08); border-color: var(--danger); color: var(--danger); }
+    .btn-ctrl.warn:hover { background: rgba(255,170,0,.08); border-color: var(--warn); color: var(--warn); }
+
+    /* ── SENSOR RADAR ────────────────────────────── */
+    .radar-wrap {
+      padding: 10px 16px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
+    .radar-distancias {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 8px;
+      width: 100%;
       align-items: center;
     }
-    .etiqueta-control { font-size: 0.9rem; color: #e2e8f0; }
-    .sub-control      { font-size: 0.75rem; color: #64748b; }
-
-    .boton-toggle {
-      position: relative;
-      display: inline-block;
-      width: 52px; height: 28px;
+    .dist-item {
+      text-align: center;
     }
-    .boton-toggle input { opacity: 0; width: 0; height: 0; }
-    .pista {
-      position: absolute;
-      cursor: pointer;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: #334155;
-      border-radius: 28px;
-      transition: background 0.3s;
+    .dist-label {
+      font-family: var(--mono);
+      font-size: .6rem;
+      color: var(--muted);
+      letter-spacing: 1px;
     }
-    .pista::before {
-      content: "";
-      position: absolute;
-      width: 20px; height: 20px;
-      left: 4px; bottom: 4px;
-      background: #e2e8f0;
-      border-radius: 50%;
-      transition: transform 0.3s;
+    .dist-val {
+      font-family: var(--mono);
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--ok);
+      transition: color .3s;
     }
-    .boton-toggle input:checked + .pista { background: #38bdf8; }
-    .boton-toggle input:checked + .pista::before { transform: translateX(24px); }
+    .dist-val.cerca { color: var(--warn); }
+    .dist-val.peligro { color: var(--danger); animation: pulso 0.5s infinite; }
 
-    /* Historial de alertas */
-    #lista-alertas { display: flex; flex-direction: column; gap: 0.5rem; }
+    .silla-icon {
+      font-size: 2.2rem;
+      filter: grayscale(0.3);
+    }
 
-    .entrada-alerta {
+    /* ── ALERTAS RECIENTES ───────────────────────── */
+    .alerta-item {
       display: flex;
-      gap: 10px;
       align-items: flex-start;
-      padding: 0.6rem 0.75rem;
+      gap: 12px;
+      padding: 11px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .alerta-item:last-child { border-bottom: none; }
+    .alerta-ico {
+      width: 30px; height: 30px;
       border-radius: 8px;
-      background: #0f172a;
-      font-size: 0.82rem;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .9rem;
+      flex-shrink: 0;
     }
-    .icono-alerta { font-size: 1rem; min-width: 20px; }
-    .texto-alerta { flex: 1; }
-    .tipo-alerta  { font-weight: 600; color: #e2e8f0; }
-    .hora-alerta  { color: #64748b; font-size: 0.75rem; }
-    .entrada-alerta.obstaculo  { border-left: 3px solid #f59e0b; }
-    .entrada-alerta.inclinacion { border-left: 3px solid #ef4444; }
-    .entrada-alerta.inmovilidad { border-left: 3px solid #8b5cf6; }
-    .entrada-alerta.ia          { border-left: 3px solid #38bdf8; }
+    .alerta-ico.obstaculo  { background: rgba(255,170,0,.15); }
+    .alerta-ico.inclinacion { background: rgba(255,59,92,.15); }
+    .alerta-ico.inmovilidad { background: rgba(150,100,255,.15); }
+    .alerta-ico.ia          { background: rgba(0,212,255,.1); }
 
-    /* Hora de última actualización */
-    #ultima-actualizacion {
-      font-size: 0.75rem;
-      color: #475569;
-      text-align: right;
-      margin-top: 1rem;
+    .alerta-info { flex: 1; min-width: 0; }
+    .alerta-tipo {
+      font-family: var(--mono);
+      font-size: .65rem;
+      color: var(--muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .alerta-desc {
+      font-size: .82rem;
+      color: var(--text);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .alerta-ts {
+      font-family: var(--mono);
+      font-size: .6rem;
+      color: var(--muted);
+      flex-shrink: 0;
     }
 
-    /* Tarjeta de estado amplia */
-    .tarjeta-ancha { grid-column: 1 / -1; }
+    /* ── TABLA HISTORIAL ─────────────────────────── */
+    .tabla-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    .tabla-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .tabla-titulo {
+      font-family: var(--mono);
+      font-size: .72rem;
+      color: var(--accent);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    .tabla-contador {
+      font-family: var(--mono);
+      font-size: .65rem;
+      color: var(--muted);
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      padding: 10px 16px;
+      text-align: left;
+      font-family: var(--mono);
+      font-size: .62rem;
+      color: var(--muted);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 11px 16px;
+      font-size: .82rem;
+      border-bottom: 1px solid rgba(26,46,64,.5);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(0,212,255,.03); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: .62rem;
+      letter-spacing: 1px;
+      font-weight: 700;
+    }
+    .badge-obstaculo  { background: rgba(255,170,0,.15); color: var(--warn); border: 1px solid rgba(255,170,0,.3); }
+    .badge-inclinacion { background: rgba(255,59,92,.15); color: var(--danger); border: 1px solid rgba(255,59,92,.3); }
+    .badge-inmovilidad { background: rgba(150,100,255,.15); color: #a78bfa; border: 1px solid rgba(150,100,255,.3); }
+    .badge-ia          { background: rgba(0,212,255,.1); color: var(--accent); border: 1px solid rgba(0,212,255,.25); }
+
+    .ts-cell { font-family: var(--mono); font-size: .68rem; color: var(--muted); }
+
+    /* ── NOTIF TOAST ─────────────────────────────── */
+    #toast-container {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 1000;
+    }
+    .toast {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 10px;
+      padding: 13px 18px;
+      min-width: 280px;
+      max-width: 340px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      animation: slideIn .3s ease;
+      box-shadow: 0 8px 30px rgba(0,0,0,.4);
+    }
+    .toast.danger { border-left-color: var(--danger); }
+    .toast.warn   { border-left-color: var(--warn); }
+    .toast-ico { font-size: 1.2rem; }
+    .toast-body { flex: 1; }
+    .toast-titulo { font-family: var(--mono); font-size: .7rem; color: var(--muted); letter-spacing: 1px; margin-bottom: 3px; }
+    .toast-msg { font-size: .85rem; color: var(--text); }
+
+    /* ── REPORTE MODAL ───────────────────────────── */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(5,10,15,.85);
+      z-index: 500;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      width: 90%;
+      max-width: 560px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal h2 {
+      font-family: var(--mono);
+      font-size: .9rem;
+      color: var(--accent);
+      letter-spacing: 2px;
+      margin-bottom: 20px;
+    }
+    .reporte-seccion { margin-bottom: 18px; }
+    .reporte-label {
+      font-family: var(--mono);
+      font-size: .65rem;
+      color: var(--muted);
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+    .reporte-val {
+      font-size: .9rem;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-family: var(--mono);
+      font-size: .8rem;
+    }
+    .btn-reporte {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--accent);
+      color: #000;
+      font-family: var(--mono);
+      font-size: .75rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      border: none;
+      padding: 11px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-right: 10px;
+      transition: opacity .2s;
+    }
+    .btn-reporte:hover { opacity: .85; }
+    .btn-cerrar-modal {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: .75rem;
+      letter-spacing: 1px;
+      border: 1px solid var(--border);
+      padding: 11px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .btn-cerrar-modal:hover { border-color: var(--text); color: var(--text); }
+
+    @keyframes pulso   { 0%,100%{opacity:1} 50%{opacity:.3} }
+    @keyframes slideIn { from{transform:translateX(20px);opacity:0} to{transform:none;opacity:1} }
+
+    @media (max-width: 900px) {
+      .grid-principal { grid-template-columns: 1fr; }
+      .metricas-fila  { grid-template-columns: 1fr 1fr; }
+      .contenedor     { padding: 16px; }
+    }
   </style>
 </head>
-
 <body>
 
-  <header>
-    <div>
-      <h1>🦽 NaviChair</h1>
-      <p>Panel de monitoreo y control en tiempo real</p>
-    </div>
-    <div id="indicador-estado">
-      <div id="punto-estado"></div>
-      <span id="texto-estado">Sin conexión</span>
-    </div>
-  </header>
-
-  <!-- Cuadrícula principal -->
-  <div class="cuadricula">
-
-    <!-- Tarjeta: Distancias (sensores ultrasónicos) -->
-    <div class="tarjeta">
-      <h2>📡 Distancias (cm)</h2>
-      <div class="fila-sensor">
-        <span class="etiqueta-sensor">Izquierda</span>
-        <span class="valor-sensor" id="dist-izq">—</span>
-      </div>
-      <div class="fila-sensor">
-        <span class="etiqueta-sensor">Centro (frente)</span>
-        <span class="valor-sensor" id="dist-cen">—</span>
-      </div>
-      <div class="fila-sensor">
-        <span class="etiqueta-sensor">Derecha</span>
-        <span class="valor-sensor" id="dist-der">—</span>
-      </div>
-    </div>
-
-    <!-- Tarjeta: Estado del usuario -->
-    <div class="tarjeta">
-      <h2>👤 Estado del usuario</h2>
-      <div class="fila-sensor">
-        <span class="etiqueta-sensor">Inclinación</span>
-        <span class="valor-sensor" id="inclinacion">—</span>
-      </div>
-      <div class="fila-sensor">
-        <span class="etiqueta-sensor">Tiempo sin movimiento</span>
-        <span class="valor-sensor" id="inmovilidad">—</span>
-      </div>
-      <div class="fila-sensor">
-        <span class="etiqueta-sensor">Última detección IA</span>
-        <span class="valor-sensor" id="resultado-ia">—</span>
-      </div>
-    </div>
-
-    <!-- Tarjeta: Control remoto de actuadores -->
-    <div class="tarjeta">
-      <h2>🎛️ Control remoto</h2>
-      <div class="grupo-botones">
-
-        <div class="fila-control">
-          <div>
-            <div class="etiqueta-control">Buzzer</div>
-            <div class="sub-control">Activar / desactivar alerta sonora</div>
-          </div>
-          <label class="boton-toggle">
-            <input type="checkbox" id="interruptor-buzzer"
-                   onchange="enviarComando('buzzer', this.checked)" />
-            <span class="pista"></span>
-          </label>
-        </div>
-
-        <div class="fila-control">
-          <div>
-            <div class="etiqueta-control">Relevador</div>
-            <div class="sub-control">Activar / desactivar alerta física</div>
-          </div>
-          <label class="boton-toggle">
-            <input type="checkbox" id="interruptor-relevador"
-                   onchange="enviarComando('relevador', this.checked)" />
-            <span class="pista"></span>
-          </label>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- Tarjeta: Historial de alertas (últimas 5) -->
-    <div class="tarjeta tarjeta-ancha">
-      <h2>🔔 Últimas 5 alertas</h2>
-      <div id="lista-alertas">
-        <div class="entrada-alerta">
-          <span class="icono-alerta">⏳</span>
-          <div class="texto-alerta">
-            <div class="tipo-alerta">Esperando datos...</div>
-            <div class="hora-alerta">Conectando con Firebase</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
+<!-- ─── TOPBAR ─────────────────────────────────────────────────── -->
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-icon">🦽</div>
+    NAVICHAIR
   </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <button class="btn-ctrl" style="flex-direction:row;padding:8px 14px;border-radius:8px;gap:6px;" onclick="abrirReporte()">
+      📋 Generar Reporte
+    </button>
+    <div class="status-pill">
+      <div class="dot" id="dot-estado"></div>
+      <span id="txt-estado" style="font-size:.7rem">DESCONECTADO</span>
+    </div>
+  </div>
+</div>
 
-  <div id="ultima-actualizacion">Última actualización: —</div>
+<!-- ─── CONTENEDOR ─────────────────────────────────────────────── -->
+<div class="contenedor">
+  <div class="grid-principal">
 
-  <!-- ================================================================
-       JAVASCRIPT — Lógica del dashboard
-  ================================================================ -->
-  <script>
-    // ----------------------------------------------------------------
-    // CONFIGURACIÓN DE FIREBASE
-    // IMPORTANTE: Reemplaza estos valores con los de TU proyecto.
-    // Los encuentras en Firebase Console → Project Settings → Web App
-    // ----------------------------------------------------------------
-    const configuracionFirebase = {
-      apiKey           : "TU_API_KEY_AQUI",
-      authDomain       : "TU_PROYECTO.firebaseapp.com",
-      databaseURL      : "https://TU_PROYECTO-default-rtdb.firebaseio.com",
-      projectId        : "TU_PROYECTO",
-      storageBucket    : "TU_PROYECTO.appspot.com",
-      messagingSenderId: "TU_SENDER_ID",
-      appId            : "TU_APP_ID"
-    };
+    <!-- Columna izquierda -->
+    <div class="columna-izq">
 
-    // Inicializar Firebase
-    const aplicacion      = firebase.initializeApp(configuracionFirebase);
-    const baseDeDatos     = firebase.database();
-    const UMBRAL_OBSTACULO  = 50;   // cm
-    const UMBRAL_INCLINACION = 30;  // grados
-    const UMBRAL_INMOVILIDAD = 10;  // minutos
+      <!-- Cámara en vivo -->
+      <div class="cam-wrap">
+        <div class="cam-sin-senal" id="cam-sin-senal">
+          <div class="icono">📷</div>
+          <span>ESPERANDO SEÑAL DE CÁMARA</span>
+        </div>
+        <img id="imagen-cam" src="" alt="" style="display:none">
+        <div class="cam-overlay"></div>
+        <div class="cam-badge"><div class="rec-dot"></div>EN VIVO</div>
+        <div class="cam-ia-badge" id="ia-badge">IA: SIN DATOS</div>
+      </div>
 
-    // ----------------------------------------------------------------
-    // FUNCIÓN: Actualizar el indicador de estado (Online/Offline)
-    // ----------------------------------------------------------------
-    function actualizarEstado(enLinea) {
-      const punto = document.getElementById("punto-estado");
-      const texto = document.getElementById("texto-estado");
-      if (enLinea) {
-        punto.classList.add("en-linea");
-        texto.textContent = "En línea";
-      } else {
-        punto.classList.remove("en-linea");
-        texto.textContent = "Sin conexión";
-      }
+      <!-- Métricas -->
+      <div class="metricas-fila">
+        <div class="metrica" id="card-dist">
+          <div class="metrica-label">Obstáculo frente</div>
+          <div class="metrica-val" id="val-dist">--</div>
+          <div class="metrica-unit">centímetros</div>
+        </div>
+        <div class="metrica" id="card-incl">
+          <div class="metrica-label">Inclinación</div>
+          <div class="metrica-val" id="val-incl">--</div>
+          <div class="metrica-unit">grados</div>
+        </div>
+        <div class="metrica" id="card-inmov">
+          <div class="metrica-label">Sin movimiento</div>
+          <div class="metrica-val" id="val-inmov">--</div>
+          <div class="metrica-unit">minutos</div>
+        </div>
+      </div>
+
+    </div><!-- /columna-izq -->
+
+    <!-- Columna derecha -->
+    <div class="columna-der">
+
+      <!-- Distancias radar -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Radar de Sensores</span>
+        </div>
+        <div class="radar-wrap">
+          <div class="radar-distancias">
+            <div class="dist-item">
+              <div class="dist-label">IZQ</div>
+              <div class="dist-val" id="dist-izq">--</div>
+              <div class="dist-label">cm</div>
+            </div>
+            <div class="silla-icon">♿</div>
+            <div class="dist-item">
+              <div class="dist-label">DER</div>
+              <div class="dist-val" id="dist-der">--</div>
+              <div class="dist-label">cm</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Control remoto -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Control Remoto</span>
+        </div>
+        <div class="card-body">
+          <div class="btn-grid">
+            <button class="btn-ctrl danger" onclick="cmd('buzzer','ON')">
+              <span class="btn-ico">🔔</span>BUZZER ON
+            </button>
+            <button class="btn-ctrl" onclick="cmd('buzzer','OFF')">
+              <span class="btn-ico">🔕</span>BUZZER OFF
+            </button>
+            <button class="btn-ctrl warn" onclick="cmd('relevador','ON')">
+              <span class="btn-ico">⚡</span>RELÉ ON
+            </button>
+            <button class="btn-ctrl" onclick="cmd('relevador','OFF')">
+              <span class="btn-ico">🔌</span>RELÉ OFF
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alertas recientes -->
+      <div class="card" style="flex:1">
+        <div class="card-header">
+          <span class="card-title">Alertas Recientes</span>
+          <span class="tabla-contador" id="cont-alertas">—</span>
+        </div>
+        <div class="card-body" id="alertas-lista" style="padding:4px 16px 12px">
+          <p style="color:var(--muted);font-size:.8rem;padding:12px 0">Esperando eventos...</p>
+        </div>
+      </div>
+
+    </div><!-- /columna-der -->
+  </div><!-- /grid-principal -->
+
+  <!-- Tabla historial completo -->
+  <div class="tabla-wrap">
+    <div class="tabla-header">
+      <span class="tabla-titulo">Historial Completo de Eventos</span>
+      <span class="tabla-contador" id="cont-historial">0 registros</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Marca de tiempo</th>
+          <th>Categoría</th>
+          <th>Descripción</th>
+          <th>Valor</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-historial">
+        <tr><td colspan="4" style="color:var(--muted);text-align:center;padding:24px">Cargando historial...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ─── MODAL REPORTE ──────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-reporte">
+  <div class="modal">
+    <h2>📋 REPORTE DEL SISTEMA</h2>
+
+    <div class="reporte-seccion">
+      <div class="reporte-label">PERÍODO</div>
+      <div class="reporte-val" id="rep-periodo">--</div>
+    </div>
+    <div class="reporte-seccion">
+      <div class="reporte-label">RESUMEN DE ALERTAS</div>
+      <div class="reporte-val" id="rep-resumen">--</div>
+    </div>
+    <div class="reporte-seccion">
+      <div class="reporte-label">ÚLTIMA LECTURA DE SENSORES</div>
+      <div class="reporte-val" id="rep-sensores">--</div>
+    </div>
+    <div class="reporte-seccion">
+      <div class="reporte-label">ESTADO GENERAL</div>
+      <div class="reporte-val" id="rep-estado">--</div>
+    </div>
+    <div style="margin-top:20px">
+      <button class="btn-reporte" onclick="descargarReporte()">⬇ Descargar .txt</button>
+      <button class="btn-cerrar-modal" onclick="cerrarReporte()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── TOAST CONTAINER ────────────────────────────────────────── -->
+<div id="toast-container"></div>
+
+<!-- ─── SCRIPT ─────────────────────────────────────────────────── -->
+<script>
+// ----------------------------------------------------------------
+// CONFIGURACIÓN FIREBASE
+// ----------------------------------------------------------------
+const CONFIG_FIREBASE = {
+  databaseURL: "https://navichair-default-rtdb.firebaseio.com/"
+};
+firebase.initializeApp(CONFIG_FIREBASE);
+const bd = firebase.database();
+
+// ----------------------------------------------------------------
+// ESTADO LOCAL
+// ----------------------------------------------------------------
+let estadoActual  = {};
+let contAlertas   = { obstaculo: 0, inclinacion: 0, inmovilidad: 0, ia: 0 };
+let ultimaAlerta  = null;
+let historialData = [];
+
+// ----------------------------------------------------------------
+// 1. CÁMARA EN VIVO
+// ----------------------------------------------------------------
+bd.ref('camara_actual/frame').on('value', snap => {
+  if (!snap.exists()) return;
+  const img = document.getElementById('imagen-cam');
+  const sin = document.getElementById('cam-sin-senal');
+  img.src = 'data:image/jpeg;base64,' + snap.val();
+  img.style.display = 'block';
+  sin.style.display = 'none';
+});
+
+// ----------------------------------------------------------------
+// 2. RESULTADO IA — actualizar badge de la cámara
+// ----------------------------------------------------------------
+bd.ref('resultados_ia').limitToLast(1).on('value', snap => {
+  const badge = document.getElementById('ia-badge');
+  if (!snap.exists()) return;
+  snap.forEach(hijo => {
+    const d = hijo.val();
+    if (d.alerta) {
+      badge.textContent = `IA: ⚠ ${d.detecciones} DETECCIÓN(ES)`;
+      badge.className = 'cam-ia-badge alerta';
+    } else {
+      badge.textContent = 'IA: SIN PERSONAS';
+      badge.className = 'cam-ia-badge';
     }
+  });
+});
 
-    // Detectar conexión / desconexión usando Firebase .info/connected
-    baseDeDatos.ref(".info/connected").on("value", (instantanea) => {
-      actualizarEstado(instantanea.val() === true);
-    });
+// ----------------------------------------------------------------
+// 3. TELEMETRÍA EN TIEMPO REAL
+// ----------------------------------------------------------------
+bd.ref('estado_actual').on('value', snap => {
+  if (!snap.exists()) return;
+  const d = snap.val();
+  estadoActual = d;
 
-    // ----------------------------------------------------------------
-    // FUNCIÓN: Colorear un valor según si está en zona peligrosa
-    // ----------------------------------------------------------------
-    function aplicarColorDistancia(elemento, valor) {
-      elemento.classList.remove("peligro", "advertencia", "normal");
-      if (valor < UMBRAL_OBSTACULO)
-        elemento.classList.add("peligro");
-      else if (valor < UMBRAL_OBSTACULO * 1.5)
-        elemento.classList.add("advertencia");
-      else
-        elemento.classList.add("normal");
-    }
+  // Indicador de conexión
+  document.getElementById('dot-estado').className = 'dot online';
+  document.getElementById('txt-estado').textContent = 'EN LÍNEA';
 
-    // ----------------------------------------------------------------
-    // ESCUCHAR: Estado actual (sensores en tiempo real)
-    // ----------------------------------------------------------------
-    baseDeDatos.ref("estado_actual").on("value", (instantanea) => {
-      const datos = instantanea.val();
-      if (!datos) return;
+  // Métricas
+  const distMin = Math.min(d.izq||999, d.cen||999, d.der||999);
+  setMetrica('val-dist', 'card-dist', distMin.toFixed(0), distMin < 50);
+  setMetrica('val-incl', 'card-incl', (d.incl||0).toFixed(1), d.incl > 30);
+  setMetrica('val-inmov', 'card-inmov', (d.inmov||0).toFixed(1), d.inmov > 10);
 
-      // Distancias
-      const izq = parseFloat(datos.izq || 0);
-      const cen = parseFloat(datos.cen || 0);
-      const der = parseFloat(datos.der || 0);
+  // Radar lateral
+  setDistRadar('dist-izq', d.izq||999);
+  setDistRadar('dist-der', d.der||999);
+});
 
-      const elIzq = document.getElementById("dist-izq");
-      const elCen = document.getElementById("dist-cen");
-      const elDer = document.getElementById("dist-der");
+function setMetrica(idVal, idCard, valor, esAlerta) {
+  document.getElementById(idVal).textContent = valor;
+  document.getElementById(idCard).className = 'metrica' + (esAlerta ? ' alerta' : '');
+}
 
-      elIzq.textContent = izq.toFixed(0) + " cm";
-      elCen.textContent = cen.toFixed(0) + " cm";
-      elDer.textContent = der.toFixed(0) + " cm";
+function setDistRadar(id, cm) {
+  const el = document.getElementById(id);
+  el.textContent = cm >= 999 ? '--' : cm.toFixed(0);
+  el.className = 'dist-val' + (cm < 30 ? ' peligro' : cm < 50 ? ' cerca' : '');
+}
 
-      aplicarColorDistancia(elIzq, izq);
-      aplicarColorDistancia(elCen, cen);
-      aplicarColorDistancia(elDer, der);
+// ----------------------------------------------------------------
+// 4. ALERTAS RECIENTES (panel derecho)
+// ----------------------------------------------------------------
+const ICONOS_ALERTA = {
+  obstaculo:   { ico: '📡', cls: 'obstaculo' },
+  inclinacion: { ico: '📐', cls: 'inclinacion' },
+  inmovilidad: { ico: '⏱️', cls: 'inmovilidad' },
+  ia:          { ico: '🤖', cls: 'ia' }
+};
 
-      // Inclinación
-      const incl = parseFloat(datos.incl || 0);
-      const elIncl = document.getElementById("inclinacion");
-      elIncl.textContent = incl.toFixed(1) + "°";
-      elIncl.classList.remove("peligro", "normal");
-      elIncl.classList.add(incl > UMBRAL_INCLINACION ? "peligro" : "normal");
+bd.ref('alertas').limitToLast(5).on('value', snap => {
+  const contenedor = document.getElementById('alertas-lista');
+  if (!snap.exists()) { contenedor.innerHTML = '<p style="color:var(--muted);font-size:.8rem;padding:12px 0">Sin eventos aún.</p>'; return; }
 
-      // Inmovilidad
-      const inmov = parseFloat(datos.inmov || 0);
-      const elInmov = document.getElementById("inmovilidad");
-      elInmov.textContent = inmov.toFixed(1) + " min";
-      elInmov.classList.remove("peligro", "advertencia", "normal");
-      if      (inmov > UMBRAL_INMOVILIDAD)       elInmov.classList.add("peligro");
-      else if (inmov > UMBRAL_INMOVILIDAD * 0.7) elInmov.classList.add("advertencia");
-      else                                        elInmov.classList.add("normal");
+  let items = [];
+  snap.forEach(hijo => items.unshift({ id: hijo.key, ...hijo.val() }));
 
-      // Hora de última actualización
-      const ahora = new Date();
-      document.getElementById("ultima-actualizacion").textContent =
-        "Última actualización: " + ahora.toLocaleTimeString("es-MX");
-    });
+  // Detectar nueva alerta para toast
+  if (items.length > 0 && items[0].id !== ultimaAlerta) {
+    ultimaAlerta = items[0].id;
+    if (historialData.length > 0) mostrarToast(items[0]); // solo si ya cargó
+  }
 
-    // ----------------------------------------------------------------
-    // ESCUCHAR: Última alerta (para el resultado de IA)
-    // ----------------------------------------------------------------
-    baseDeDatos.ref("resultados_ia").limitToLast(1).on("value", (instantanea) => {
-      instantanea.forEach((hijo) => {
-        const datos = hijo.val();
-        const elIA = document.getElementById("resultado-ia");
-        if (datos.alerta) {
-          elIA.textContent = datos.detecciones + " objeto(s) detectado(s)";
-          elIA.className = "valor-sensor peligro";
-        } else {
-          elIA.textContent = "Sin obstáculos";
-          elIA.className = "valor-sensor normal";
-        }
-      });
-    });
+  // Contar
+  items.forEach(a => { if(contAlertas[a.subtipo] !== undefined) contAlertas[a.subtipo]++; });
+  document.getElementById('cont-alertas').textContent = `${items.length} recientes`;
 
-    // ----------------------------------------------------------------
-    // ESCUCHAR: Historial de alertas (últimas 5)
-    // ----------------------------------------------------------------
-    const iconosAlerta = {
-      obstaculo  : "⚠️",
-      inclinacion: "📐",
-      inmovilidad: "😴",
-      ia         : "👁️"
-    };
+  contenedor.innerHTML = items.map(a => {
+    const info = ICONOS_ALERTA[a.subtipo] || ICONOS_ALERTA.ia;
+    const ts   = a.timestamp ? a.timestamp.split('T').join(' ').substring(0,19) : '';
+    return `<div class="alerta-item">
+      <div class="alerta-ico ${info.cls}">${info.ico}</div>
+      <div class="alerta-info">
+        <div class="alerta-tipo">${(a.subtipo||'evento').toUpperCase()}</div>
+        <div class="alerta-desc">${a.descripcion||''}</div>
+      </div>
+      <div class="alerta-ts">${ts}</div>
+    </div>`;
+  }).join('');
+});
 
-    baseDeDatos.ref("alertas").limitToLast(5).on("value", (instantanea) => {
-      const listaAlertas = [];
-      instantanea.forEach((hijo) => {
-        listaAlertas.push(hijo.val());
-      });
+// ----------------------------------------------------------------
+// 5. HISTORIAL COMPLETO (tabla inferior)
+// ----------------------------------------------------------------
+bd.ref('alertas').limitToLast(30).on('value', snap => {
+  const tbody = document.getElementById('tbody-historial');
+  if (!snap.exists()) { tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:20px">Sin registros.</td></tr>'; return; }
 
-      if (listaAlertas.length === 0) return;
+  historialData = [];
+  snap.forEach(hijo => historialData.unshift({ id: hijo.key, ...hijo.val() }));
+  document.getElementById('cont-historial').textContent = `${historialData.length} registros`;
 
-      // Mostrar en orden inverso (la más reciente primero)
-      listaAlertas.reverse();
+  tbody.innerHTML = historialData.map(a => {
+    const tipo  = a.subtipo || a.tipo || 'evento';
+    const ts    = a.timestamp ? a.timestamp.split('T').join(' ').substring(0,19) : '--';
+    const valor = a.valor != null ? Number(a.valor).toFixed(1) : '--';
+    return `<tr>
+      <td class="ts-cell">${ts}</td>
+      <td><span class="badge badge-${tipo}">${tipo.toUpperCase()}</span></td>
+      <td>${a.descripcion||''}</td>
+      <td style="font-family:var(--mono);font-size:.78rem">${valor}</td>
+    </tr>`;
+  }).join('');
+});
 
-      const contenedor = document.getElementById("lista-alertas");
-      contenedor.innerHTML = "";
+// ----------------------------------------------------------------
+// 6. CONTROL REMOTO
+// ----------------------------------------------------------------
+function cmd(actuador, valor) {
+  bd.ref('comandos/' + actuador).set(valor)
+    .then(() => mostrarToastSimple(`${actuador.toUpperCase()} → ${valor}`, 'info'))
+    .catch(e => mostrarToastSimple('Error: ' + e.message, 'danger'));
+}
 
-      listaAlertas.forEach((alerta) => {
-        const div        = document.createElement("div");
-        const subtipo    = alerta.subtipo || "alerta";
-        const icono      = iconosAlerta[subtipo] || "🔔";
-        const hora       = alerta.timestamp
-          ? new Date(alerta.timestamp).toLocaleTimeString("es-MX")
-          : "Hora desconocida";
+// ----------------------------------------------------------------
+// 7. TOASTS
+// ----------------------------------------------------------------
+function mostrarToast(alerta) {
+  const info = ICONOS_ALERTA[alerta.subtipo] || { ico: '⚠', cls: 'warn' };
+  const cls  = alerta.subtipo === 'inclinacion' ? 'danger' : 'warn';
+  const msg  = alerta.descripcion || 'Nuevo evento registrado';
+  const el   = document.createElement('div');
+  el.className = `toast ${cls}`;
+  el.innerHTML = `<div class="toast-ico">${info.ico}</div>
+    <div class="toast-body">
+      <div class="toast-titulo">${(alerta.subtipo||'ALERTA').toUpperCase()}</div>
+      <div class="toast-msg">${msg}</div>
+    </div>`;
+  document.getElementById('toast-container').prepend(el);
+  setTimeout(() => el.remove(), 5000);
 
-        div.className    = "entrada-alerta " + subtipo;
-        div.innerHTML    =
-          '<span class="icono-alerta">' + icono + '</span>' +
-          '<div class="texto-alerta">' +
-            '<div class="tipo-alerta">' + (alerta.descripcion || "Alerta") + '</div>' +
-            '<div class="hora-alerta">' + hora + '</div>' +
-          '</div>';
+  // Notificación del navegador
+  if (Notification.permission === 'granted') {
+    new Notification('NaviChair ⚠', { body: msg, icon: '' });
+  }
+}
 
-        contenedor.appendChild(div);
-      });
-    });
+function mostrarToastSimple(msg, tipo) {
+  const el = document.createElement('div');
+  el.className = `toast ${tipo||''}`;
+  el.innerHTML = `<div class="toast-ico">✓</div>
+    <div class="toast-body">
+      <div class="toast-titulo">COMANDO ENVIADO</div>
+      <div class="toast-msg">${msg}</div>
+    </div>`;
+  document.getElementById('toast-container').prepend(el);
+  setTimeout(() => el.remove(), 3000);
+}
 
-    // ----------------------------------------------------------------
-    // FUNCIÓN: Enviar comando a Firebase (toggle del dashboard)
-    // El firebase_logger.py escucha este nodo y lo reenvía por MQTT
-    // ----------------------------------------------------------------
-    function enviarComando(dispositivo, estadoActivo) {
-      const valor = estadoActivo ? "ON" : "OFF";
-      baseDeDatos.ref("comandos/" + dispositivo).set(valor)
-        .then(() => {
-          console.log("Comando enviado → " + dispositivo + ": " + valor);
-        })
-        .catch((error) => {
-          console.error("Error al enviar comando:", error);
-        });
-    }
-  </script>
+// Pedir permiso de notificaciones al cargar
+if ('Notification' in window && Notification.permission === 'default') {
+  Notification.requestPermission();
+}
 
+// ----------------------------------------------------------------
+// 8. MODAL REPORTE
+// ----------------------------------------------------------------
+function abrirReporte() {
+  const ahora  = new Date().toLocaleString('es-MX');
+  const d      = estadoActual;
+
+  document.getElementById('rep-periodo').textContent = `Generado el ${ahora}`;
+
+  document.getElementById('rep-resumen').textContent =
+    `Obstáculos: ${contAlertas.obstaculo} | ` +
+    `Inclinaciones: ${contAlertas.inclinacion} | ` +
+    `Inmovilidades: ${contAlertas.inmovilidad} | ` +
+    `Detecciones IA: ${contAlertas.ia}`;
+
+  document.getElementById('rep-sensores').textContent = d.izq != null
+    ? `Izq: ${d.izq}cm | Centro: ${d.cen}cm | Der: ${d.der}cm | Inclinación: ${(d.incl||0).toFixed(1)}° | Sin mov: ${(d.inmov||0).toFixed(1)} min`
+    : 'Sin datos de sensores aún.';
+
+  const estado =
+    (d.cen < 50   ? '⚠ Obstáculo frontal cercano. ' : '') +
+    (d.incl > 30  ? '🚨 Inclinación peligrosa. ' : '') +
+    (d.inmov > 10 ? '⏱ Inmovilidad prolongada. ' : '') ||
+    '✅ Sistema operando con normalidad.';
+  document.getElementById('rep-estado').textContent = estado;
+
+  document.getElementById('modal-reporte').classList.add('visible');
+}
+
+function cerrarReporte() {
+  document.getElementById('modal-reporte').classList.remove('visible');
+}
+
+function descargarReporte() {
+  const lineas = [
+    '======================================',
+    '     NAVICHAIR — REPORTE DEL SISTEMA  ',
+    '======================================',
+    '',
+    document.getElementById('rep-periodo').textContent,
+    '',
+    'RESUMEN DE ALERTAS:',
+    document.getElementById('rep-resumen').textContent,
+    '',
+    'ÚLTIMA LECTURA DE SENSORES:',
+    document.getElementById('rep-sensores').textContent,
+    '',
+    'ESTADO GENERAL:',
+    document.getElementById('rep-estado').textContent,
+    '',
+    '--- HISTORIAL DE EVENTOS ---',
+    ...historialData.map(a =>
+      `[${(a.timestamp||'').substring(0,19)}] ${(a.subtipo||a.tipo||'').toUpperCase()} — ${a.descripcion||''}`
+    )
+  ];
+
+  const blob = new Blob([lineas.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `navichair_reporte_${new Date().toISOString().substring(0,10)}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Detector offline
+setInterval(() => {
+  const dot = document.getElementById('dot-estado');
+  if (dot.classList.contains('online')) {
+    // ya marcado desde telemetría
+  }
+}, 10000);
+</script>
 </body>
 </html>
