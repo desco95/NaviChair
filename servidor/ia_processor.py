@@ -1,7 +1,7 @@
 """
 OBJETIVO  : Pipeline de Inteligencia Artificial para NaviChair. Recibe
             imágenes de la ESP32-CAM vía MQTT, las procesa con OpenCV
-            para detectar obstáculos o personas en el camino, y publica
+            para detectar rostros en el camino, y publica
             el resultado de vuelta a la ESP32 para activar actuadores.
 INTEGRANTES: Diana Carolina Plascencia Rodríguez
              María Aurora Rodríguez López
@@ -18,13 +18,13 @@ PROYECTO   : NaviChair — Sistema Inteligente de Asistencia y Monitoreo
 # ARCHIVO: ia_processor.py
 # DESCRIPCIÓN: Procesa imágenes recibidas de la ESP32-CAM mediante MQTT.
 #              Usa OpenCV con un clasificador Haar Cascade (incluido en
-#              OpenCV, no requiere descarga) para detectar personas u
-#              obstáculos en el campo visual de la silla. Si detecta algo,
+#              OpenCV, no requiere descarga) para detectar rostros humanos
+#              en el campo visual de la silla. Si detecta algo,
 #              publica un comando MQTT hacia la ESP32 para activar el buzzer.
 #
-# MODELO UTILIZADO: Haar Cascade frontal face / full body (OpenCV built-in)
-#   - Precisión aproximada: 70-85% en condiciones de buena iluminación
-#   - Tipo de predicción: detección de presencia humana en imagen
+# MODELO UTILIZADO: Haar Cascade Frontal Face
+#   - Precisión aproximada: 80-90% en condiciones de buena iluminación
+#   - Tipo de predicción: Detecta rostros humanos en tiempo real.
 #   - Latencia estimada: 50-150 ms por fotograma en CPU estándar
 #
 # INSTRUCCIONES PARA PROBAR SIN MQTT (datos estáticos):
@@ -56,7 +56,7 @@ _PAHO_V2 = _PAHO_VERSION >= (2, 0)
 # -----------------------------------------------------------------------
 # CONFIGURACIÓN
 # -----------------------------------------------------------------------
-DIRECCION_BROKER    = "localhost"
+DIRECCION_BROKER    = "172.20.10.3"
 PUERTO_BROKER       = 1883
 ID_CLIENTE_IA       = "navichair_ia_processor"
 
@@ -64,30 +64,30 @@ TOPICO_CAMARA       = "navichair/camara"          # Recibe imagen base64
 TOPICO_RESULTADO_IA = "navichair/ia/resultado"    # Publica resultado
 TOPICO_CMD_BUZZER   = "navichair/cmd/buzzer"      # Activa buzzer si detecta
 
-# Umbral de confianza: si se detectan más de N personas/objetos, activar alerta
+# Umbral de confianza: si se detectan más de N rostros, activar alerta
 UMBRAL_DETECCIONES  = 1
 
 # -----------------------------------------------------------------------
 # CARGAR MODELO DE IA
 # HaarCascade está incluido en OpenCV, no requiere descarga adicional.
-# Detecta cuerpos completos (personas paradas frente a la silla).
+# Detecta rostros de frente (personas mirando hacia la silla).
 # -----------------------------------------------------------------------
 def cargar_modelo():
     """
     Parámetros : Ninguno
-    Descripción: Carga el clasificador Haar Cascade de cuerpo completo
+    Descripción: Carga el clasificador Haar Cascade de rostro frontal
                  incluido en OpenCV. No requiere descarga externa.
     Retorna    : Objeto CascadeClassifier de OpenCV listo para usar.
     """
-    ruta_cascade = cv2.data.haarcascades + "haarcascade_fullbody.xml"
+    ruta_cascade = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
     clasificador = cv2.CascadeClassifier(ruta_cascade)
     if clasificador.empty():
         print("ERROR: No se pudo cargar el modelo Haar Cascade.")
         print("  Ruta buscada:", ruta_cascade)
         sys.exit(1)
-    print("{} Modelo IA cargado: Haar Cascade (cuerpo completo)".format(
+    print("{} Modelo IA cargado: Haar Cascade (rostro/cara)".format(
         marca_de_tiempo()))
-    print("  Precisión aprox: 70-85% con buena iluminación")
+    print("  Precisión aprox: 80-90% con buena iluminación")
     return clasificador
 
 
@@ -109,7 +109,7 @@ def procesar_imagen(imagen_bytes, clasificador):
     Parámetros : imagen_bytes (bytes) — imagen en formato JPEG o PNG
                  clasificador         — modelo Haar Cascade cargado
     Descripción: Decodifica la imagen, la convierte a escala de grises
-                 y aplica el clasificador para detectar personas/cuerpos.
+                 y aplica el clasificador para detectar rostros/caras.
                  Dibuja rectángulos sobre las detecciones.
     Retorna    : Tupla (cantidad_detecciones: int, imagen_anotada: ndarray)
     """
@@ -127,20 +127,20 @@ def procesar_imagen(imagen_bytes, clasificador):
 
     # Aplicar detección
     # scaleFactor=1.1: escalar 10% en cada paso del detector
-    # minNeighbors=3:  mínimo de detecciones vecinas para confirmar
-    # minSize=(30,60): tamaño mínimo de objeto a detectar (px)
+    # minNeighbors=5: aumentado ligeramente para reducir falsos positivos en rostros
+    # minSize=(30,30): tamaño mínimo de la cara a detectar (px)
     detecciones = clasificador.detectMultiScale(
         gris,
         scaleFactor=1.1,
-        minNeighbors=3,
-        minSize=(30, 60)
+        minNeighbors=5,
+        minSize=(30, 30)
     )
 
     # CORRECCIÓN: detectMultiScale puede retornar tupla vacía () en lugar
     # de lista cuando no hay detecciones. Se normaliza con len() de forma segura.
     cantidad = len(detecciones) if len(detecciones) > 0 else 0
 
-    # Dibujar rectángulos sobre las detecciones
+    # Dibujar rectángulos sobre las detecciones (rostros)
     for (x, y, ancho, alto) in detecciones:
         cv2.rectangle(imagen, (x, y), (x + ancho, y + alto), (0, 255, 0), 2)
 
@@ -180,7 +180,7 @@ def prueba_con_imagen_estatica(clasificador):
     # Crear imagen de prueba: fondo gris con texto
     imagen_prueba = np.zeros((480, 640, 3), dtype=np.uint8)
     imagen_prueba[:] = (100, 100, 100)
-    cv2.putText(imagen_prueba, "NaviChair - Prueba IA",
+    cv2.putText(imagen_prueba, "NaviChair - Prueba Rostros",
                 (120, 240), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
 
     # Codificar como bytes JPEG para simular lo que enviaría la ESP32-CAM
@@ -189,7 +189,7 @@ def prueba_con_imagen_estatica(clasificador):
 
     cantidad, imagen_procesada = procesar_imagen(imagen_bytes, clasificador)
 
-    print("  Resultado: {} detección(es) encontrada(s)".format(cantidad))
+    print("  Resultado: {} rostro(s) encontrado(s)".format(cantidad))
     if cantidad >= UMBRAL_DETECCIONES:
         print("  ACCIÓN: Se publicaría comando → navichair/cmd/buzzer : ON")
     else:
@@ -208,7 +208,7 @@ def modo_webcam(clasificador):
     """
     Parámetros : clasificador — modelo Haar Cascade cargado
     Descripción: Activa la cámara local (índice 0) y aplica detección
-                 en tiempo real cuadro a cuadro. Muestra ventana con las
+                 de caras en tiempo real cuadro a cuadro. Muestra ventana con las
                  detecciones anotadas. Presionar 'q' para salir.
     Retorna    : None
     """
@@ -234,9 +234,12 @@ def modo_webcam(clasificador):
 
         gris = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
+        # Ajustado el minSize a (30, 30) óptimo para rostros
         detecciones = clasificador.detectMultiScale(
             gris,
-            1.1, 3, minSize=(30, 60)
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(30, 30)
         )
 
         for (x, y, w, h) in detecciones:
@@ -245,9 +248,9 @@ def modo_webcam(clasificador):
         cantidad = len(detecciones)
 
         if cantidad >= UMBRAL_DETECCIONES:
-            print("{} ALERTA: Persona detectada → MQTT ON".format(marca_de_tiempo()))
+            print("{} ALERTA: Cara detectada → MQTT ON".format(marca_de_tiempo()))
 
-        cv2.imshow("IA NaviChair", frame)
+        cv2.imshow("IA NaviChair - Rostros", frame)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
@@ -328,7 +331,7 @@ def construir_callback_mensaje(clasificador):
         # Si supera el umbral, activar buzzer en la ESP32
         if cantidad >= UMBRAL_DETECCIONES:
             cliente.publish(TOPICO_CMD_BUZZER, "ON")
-            print("  → ALERTA: Persona/obstáculo detectado. Buzzer activado.")
+            print("  → ALERTA: Cara/Rostro detectado. Buzzer activado.")
         else:
             cliente.publish(TOPICO_CMD_BUZZER, "OFF")
 
@@ -365,7 +368,7 @@ if __name__ == "__main__":
     cliente_ia.on_connect = al_conectar
     cliente_ia.on_message = construir_callback_mensaje(clasificador)
 
-    print("{} Iniciando pipeline de IA NaviChair...".format(marca_de_tiempo()))
+    print("{} Iniciando pipeline de IA NaviChair (Enfoque: Rostros)...".format(marca_de_tiempo()))
     print("  Para prueba sin MQTT: python ia_processor.py --prueba")
 
     try:
