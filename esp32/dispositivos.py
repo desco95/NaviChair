@@ -54,9 +54,10 @@ class CajaDeGestion:
 
         # Centro (frente)
         self.trig_cen  = Pin(19, Pin.OUT)
-        self.echo_cen  = Pin(34, Pin.IN)
+        self.echo_cen  = Pin(21, Pin.IN)
 
-        self.trig_der  = Pin(4, Pin.OUT)
+        # Derecha
+        self.trig_der  = Pin(22, Pin.OUT)
         self.echo_der  = Pin(23, Pin.IN)
 
         # -----------------------------------------------
