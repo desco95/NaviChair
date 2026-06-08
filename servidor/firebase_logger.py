@@ -62,6 +62,7 @@ TOPICOS_ESCUCHAR   = [
     ("navichair/inclinacion", 0),   # Alertas de inclinación
     ("navichair/inmovilidad", 0),   # Alertas de inmovilidad
     ("navichair/ia/resultado",0),   # Resultados del modelo IA
+    ("navichair/camara",      0),
 ]
 
 TOPICO_CMD_BUZZER    = "navichair/cmd/buzzer"
@@ -308,7 +309,20 @@ def construir_callbacks(referencia_db):
                 )
             except Exception as e:
                 print("Error al procesar resultado IA:", e)
+                
+        # --- Tópico: cámara — subir frame a Firebase para streaming ---
+        elif topico == "navichair/camara":
+            try:
+                import time as _time
+                referencia_db.child("camara_actual").set({
+                    "frame":     carga,
+                    "timestamp": timestamp_iso(),
+                    "ts":        int(_time.time() * 1000)
+                })
+            except Exception as e:
+                print("Error al guardar frame:", e)
 
+        
     return al_conectar, al_recibir_mensaje
 
 
