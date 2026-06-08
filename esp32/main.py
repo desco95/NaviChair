@@ -45,8 +45,8 @@ TOPICO_ESTADO      = "navichair/estado"
 # -----------------------------------------------------------------------
 # CONFIGURACIÓN DE RED WiFi
 # -----------------------------------------------------------------------
-SSID_WIFI = "Iphone David"
-CLAVE_WIFI = "huevitos"
+SSID_WIFI     = "Iphone David"
+CLAVE_WIFI    = "huevitos"
 
 
 def conectar_wifi():
@@ -201,3 +201,4 @@ while True:
         print("Error en ciclo principal:", error_general)
         actuadores.mostrar_alerta("ERROR", str(error_general)[:16])
         time.sleep(2)
+
